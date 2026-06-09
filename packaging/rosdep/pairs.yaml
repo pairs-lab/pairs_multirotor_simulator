@@ -1,0 +1,11 @@
+# Local rosdep rules for PAIRS packages not in the public rosdep index.
+# Lets bloom/rosdep resolve inter-package dependencies to their generated
+# Debian package names during the .deb build (ROS 1 Noetic).
+pairs_msgs:
+  ubuntu: [ros-noetic-pairs-msgs]
+pairs_lib:
+  ubuntu: [ros-noetic-pairs-lib]
+pairs_uav_hw_api:
+  ubuntu: [ros-noetic-pairs-uav-hw-api]
+pairs_multirotor_simulator:
+  ubuntu: [ros-noetic-pairs-multirotor-simulator]
