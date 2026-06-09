@@ -1,0 +1,5 @@
+<library path="lib/libPairsMultirotorSimulator_Simulator">
+  <class name="pairs_multirotor_simulator/MultirotorSimulator" type="pairs_multirotor_simulator::MultirotorSimulator" base_class_type="nodelet::Nodelet">
+    <description>MultirotorSimulator nodelet</description>
+  </class>
+</library>
