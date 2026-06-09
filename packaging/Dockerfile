@@ -1,6 +1,5 @@
-# Toolchain image for building ROS 2 Jazzy .deb packages for pairs_lib.
-# Jazzy targets Ubuntu 24.04 (noble).
-FROM ros:jazzy-ros-base
+# Toolchain image for building ROS noetic .deb packages for pairs_multirotor_simulator.
+FROM ros:noetic-ros-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 

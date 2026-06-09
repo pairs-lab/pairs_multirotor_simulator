@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
-#
-# Runs INSIDE the ros:noetic packaging container (see Dockerfile).
-# Builds Debian packages for pairs_multirotor_simulator and its PAIRS
-# dependencies, in dependency order, and copies the .deb files to /output.
-#
-# Dependency order: pairs_msgs -> pairs_lib -> pairs_uav_hw_api -> pairs_multirotor_simulator
-#
-# Mounts (handled by make.sh):
-#   /src     -> the catkin src/ directory containing all the pairs_* packages
-#   /output  -> host directory where built .deb files are collected
-#
+# Runs INSIDE the ros:noetic packaging container. Installs prebuilt PAIRS
+# dependency .debs from /prebuilt, then builds pairs_multirotor_simulator and copies the .deb to /output.
+#   PAIRS deps (build order, supplied from /prebuilt): none
 set -eo pipefail
-
-ROS_DISTRO_NAME="noetic"
-OS_NAME="ubuntu"
-OS_VERSION="focal"
-
+ROS_DISTRO_NAME="noetic"; OS_NAME="ubuntu"; OS_VERSION="focal"
 source "/opt/ros/${ROS_DISTRO_NAME}/setup.bash"
 set -u
 
@@ -23,16 +11,19 @@ LOCAL_RULES="/src/pairs_multirotor_simulator/packaging/rosdep/pairs.yaml"
 echo "yaml file://${LOCAL_RULES}" | sudo tee /etc/ros/rosdep/sources.list.d/10-pairs.list >/dev/null
 rosdep update --include-eol-distros
 sudo apt-get update
-
 mkdir -p /output
 
+# Install prebuilt PAIRS dependency .debs (msgs/lib/hw_api/managers/...) from the pool.
+shopt -s nullglob
+prebuilt=(/prebuilt/ros-${ROS_DISTRO_NAME}-*.deb)
+if [ ${#prebuilt[@]} -gt 0 ]; then
+  echo ">> installing ${#prebuilt[@]} prebuilt PAIRS deps from /prebuilt"
+  apt-get install -y "${prebuilt[@]}" || { dpkg -i "${prebuilt[@]}" || true; apt-get install -f -y || true; }
+fi
+
 build_one() {
-  local pkg_dir="$1"
-  local pkg_name; pkg_name="$(basename "$pkg_dir")"
-  if [ ! -d "$pkg_dir" ]; then
-    echo "ERROR: dependency '$pkg_name' not found at $pkg_dir — is it checked out in src/ on its ros1 branch?" >&2
-    exit 1
-  fi
+  local pkg_dir="$1"; local pkg_name; pkg_name="$(basename "$pkg_dir")"
+  if [ ! -d "$pkg_dir" ]; then echo "ERROR: $pkg_name not found at $pkg_dir" >&2; exit 1; fi
   echo "=================================================================="
   echo " Building Debian package for: ${pkg_name}"
   echo "=================================================================="
@@ -49,13 +40,9 @@ build_one() {
   done
 }
 
-# Dependency order.
-build_one /src/pairs_msgs
-build_one /src/pairs_lib
-build_one /src/pairs_uav_hw_api
 build_one /src/pairs_multirotor_simulator
 
 echo "=================================================================="
 echo " Done. Built packages in /output:"
-ls -1 /output/*.deb
+ls -1 /output/*.deb 2>/dev/null || echo " (none)"
 echo "=================================================================="
