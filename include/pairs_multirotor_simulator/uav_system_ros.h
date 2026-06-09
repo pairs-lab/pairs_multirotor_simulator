@@ -1,44 +1,53 @@
 #ifndef UAV_SYSTEM_ROS_H
 #define UAV_SYSTEM_ROS_H
 
-#include <ros/ros.h>
-#include <nodelet/nodelet.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <pairs_lib/transform_broadcaster.h>
 
 #include <pairs_lib/param_loader.h>
 #include <pairs_lib/publisher_handler.h>
-#include <pairs_lib/subscribe_handler.h>
+#include <pairs_lib/subscriber_handler.h>
+#include <pairs_lib/service_server_handler.h>
 #include <pairs_lib/mutex.h>
 #include <pairs_lib/attitude_converter.h>
 
 #include <pairs_multirotor_simulator/uav_system/uav_system.hpp>
 
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/Range.h>
-#include <nav_msgs/Odometry.h>
-#include <pairs_msgs/Float64Srv.h>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/range.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <pairs_msgs/msg/float64.hpp>
+#include <pairs_msgs/srv/float64_srv.hpp>
 
-#include <pairs_msgs/HwApiActuatorCmd.h>
-#include <pairs_msgs/HwApiControlGroupCmd.h>
-#include <pairs_msgs/HwApiAttitudeRateCmd.h>
-#include <pairs_msgs/HwApiAttitudeCmd.h>
-#include <pairs_msgs/HwApiAccelerationHdgRateCmd.h>
-#include <pairs_msgs/HwApiAccelerationHdgCmd.h>
-#include <pairs_msgs/HwApiVelocityHdgRateCmd.h>
-#include <pairs_msgs/HwApiVelocityHdgCmd.h>
-#include <pairs_msgs/HwApiPositionCmd.h>
-#include <pairs_msgs/TrackerCommand.h>
+#include <pairs_msgs/msg/hw_api_actuator_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_control_group_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_attitude_rate_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_attitude_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_acceleration_hdg_rate_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_acceleration_hdg_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_velocity_hdg_rate_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_velocity_hdg_cmd.hpp>
+#include <pairs_msgs/msg/hw_api_position_cmd.hpp>
+#include <pairs_msgs/msg/tracker_command.hpp>
 
 namespace pairs_multirotor_simulator
 {
 
+struct UavSystemRos_CommonHandlers_t
+{
+
+  rclcpp::Node::SharedPtr                                       node;
+  std::string                                                   uav_name;
+  std::optional<std::shared_ptr<pairs_lib::TransformBroadcaster>> transform_broadcaster;
+};
+
 class UavSystemRos {
 
 public:
-  UavSystemRos(ros::NodeHandle& nh, const std::string name);
+  UavSystemRos(const UavSystemRos_CommonHandlers_t common_handlers);
 
-  void makeStep(const double dt);
+  void makeStep(const double dt, const double time_stamp);
 
   void crash(void);
 
@@ -52,6 +61,14 @@ public:
   MultirotorModel::State       getState();
 
 private:
+  rclcpp::Node::SharedPtr node_;
+
+  rclcpp::CallbackGroup::SharedPtr cbgrp_subs_;
+  rclcpp::CallbackGroup::SharedPtr cbgrp_ss_;
+
+  rclcpp::Time time_stamp_;
+  std::mutex   mutex_time_stamp_;
+
   std::atomic<bool> is_initialized_ = false;
   std::string       _uav_name_;
 
@@ -69,8 +86,8 @@ private:
   UavSystem  uav_system_;
   std::mutex mutex_uav_system_;
 
-  ros::Time  time_last_input_;
-  std::mutex mutex_time_last_input_;
+  rclcpp::Time time_last_input_;
+  std::mutex   mutex_time_last_input_;
 
   MultirotorModel::ModelParams model_params_;
 
@@ -85,11 +102,12 @@ private:
 
   // | ----------------------- publishers ----------------------- |
 
-  pairs_lib::PublisherHandler<sensor_msgs::Imu>   ph_imu_;
-  pairs_lib::PublisherHandler<nav_msgs::Odometry> ph_odom_;
-  pairs_lib::PublisherHandler<sensor_msgs::Range> ph_rangefinder_;
+  std::shared_ptr<pairs_lib::PublisherHandler<sensor_msgs::msg::Imu>>   ph_imu_;
+  std::shared_ptr<pairs_lib::PublisherHandler<nav_msgs::msg::Odometry>> ph_odom_;
+  std::shared_ptr<pairs_lib::PublisherHandler<sensor_msgs::msg::Range>> ph_rangefinder_;
 
   void publishOdometry(const MultirotorModel::State& state);
+  void publishFCUTF(const MultirotorModel::State& state);
   void publishIMU(const MultirotorModel::State& state);
   void publishRangefinder(const MultirotorModel::State& state);
 
@@ -101,37 +119,39 @@ private:
 
   // | ----------------------- subscribers ---------------------- |
 
-  void callbackActuatorCmd(const pairs_msgs::HwApiActuatorCmd::ConstPtr msg);
-  void callbackControlGroupCmd(const pairs_msgs::HwApiControlGroupCmd::ConstPtr msg);
-  void callbackAttitudeRateCmd(const pairs_msgs::HwApiAttitudeRateCmd::ConstPtr msg);
-  void callbackAttitudeCmd(const pairs_msgs::HwApiAttitudeCmd::ConstPtr msg);
-  void callbackAccelerationHdgRateCmd(const pairs_msgs::HwApiAccelerationHdgRateCmd::ConstPtr msg);
-  void callbackAccelerationHdgCmd(const pairs_msgs::HwApiAccelerationHdgCmd::ConstPtr msg);
-  void callbackVelocityHdgRateCmd(const pairs_msgs::HwApiVelocityHdgRateCmd::ConstPtr msg);
-  void callbackVelocityHdgCmd(const pairs_msgs::HwApiVelocityHdgCmd::ConstPtr msg);
-  void callbackPositionCmd(const pairs_msgs::HwApiPositionCmd::ConstPtr msg);
-  void callbackTrackerCmd(const pairs_msgs::TrackerCommand::ConstPtr msg);
+  void callbackActuatorCmd(const pairs_msgs::msg::HwApiActuatorCmd::ConstSharedPtr msg);
+  void callbackControlGroupCmd(const pairs_msgs::msg::HwApiControlGroupCmd::ConstSharedPtr msg);
+  void callbackAttitudeRateCmd(const pairs_msgs::msg::HwApiAttitudeRateCmd::ConstSharedPtr msg);
+  void callbackAttitudeCmd(const pairs_msgs::msg::HwApiAttitudeCmd::ConstSharedPtr msg);
+  void callbackAccelerationHdgRateCmd(const pairs_msgs::msg::HwApiAccelerationHdgRateCmd::ConstSharedPtr msg);
+  void callbackAccelerationHdgCmd(const pairs_msgs::msg::HwApiAccelerationHdgCmd::ConstSharedPtr msg);
+  void callbackVelocityHdgRateCmd(const pairs_msgs::msg::HwApiVelocityHdgRateCmd::ConstSharedPtr msg);
+  void callbackVelocityHdgCmd(const pairs_msgs::msg::HwApiVelocityHdgCmd::ConstSharedPtr msg);
+  void callbackPositionCmd(const pairs_msgs::msg::HwApiPositionCmd::ConstSharedPtr msg);
+  void callbackTrackerCmd(const pairs_msgs::msg::TrackerCommand::ConstSharedPtr msg);
 
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiActuatorCmd>            sh_actuator_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiControlGroupCmd>        sh_control_group_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiAttitudeRateCmd>        sh_attitude_rate_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiAttitudeCmd>            sh_attitude_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiAccelerationHdgRateCmd> sh_acceleration_hdg_rate_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiAccelerationHdgCmd>     sh_acceleration_hdg_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiVelocityHdgRateCmd>     sh_velocity_hdg_rate_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiVelocityHdgCmd>         sh_velocity_hdg_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::HwApiPositionCmd>            sh_position_cmd_;
-  pairs_lib::SubscribeHandler<pairs_msgs::TrackerCommand>              sh_tracker_cmd_;
+  rclcpp::Subscription<pairs_msgs::msg::HwApiPositionCmd>::SharedPtr sub_pos_cmd_;
+
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiActuatorCmd>            sh_actuator_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiControlGroupCmd>        sh_control_group_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiAttitudeRateCmd>        sh_attitude_rate_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiAttitudeCmd>            sh_attitude_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiAccelerationHdgRateCmd> sh_acceleration_hdg_rate_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiAccelerationHdgCmd>     sh_acceleration_hdg_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiVelocityHdgRateCmd>     sh_velocity_hdg_rate_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiVelocityHdgCmd>         sh_velocity_hdg_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::HwApiPositionCmd>            sh_position_cmd_;
+  pairs_lib::SubscriberHandler<pairs_msgs::msg::TrackerCommand>              sh_tracker_cmd_;
 
   // | --------------------- service servers -------------------- |
 
-  ros::ServiceServer service_server_set_mass_;
+  pairs_lib::ServiceServerHandler<pairs_msgs::srv::Float64Srv> ss_set_mass_;
+  pairs_lib::ServiceServerHandler<pairs_msgs::srv::Float64Srv> ss_set_ground_z_;
 
-  ros::ServiceServer service_server_set_ground_z_;
+  bool callbackSetMass(const std::shared_ptr<pairs_msgs::srv::Float64Srv::Request> request, const std::shared_ptr<pairs_msgs::srv::Float64Srv::Response> response);
 
-  bool callbackSetMass(pairs_msgs::Float64Srv::Request& req, pairs_msgs::Float64Srv::Response& res);
-
-  bool callbackSetGroundZ(pairs_msgs::Float64Srv::Request& req, pairs_msgs::Float64Srv::Response& res);
+  bool callbackSetGroundZ(const std::shared_ptr<pairs_msgs::srv::Float64Srv::Request>  request,
+                          const std::shared_ptr<pairs_msgs::srv::Float64Srv::Response> response);
 
   // | ------------------------ routines ------------------------ |
 

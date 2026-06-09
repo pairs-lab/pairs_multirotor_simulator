@@ -1,6 +1,20 @@
+# the rate of stepping the simulation
 simulation_rate: 100.0 # Hz
-clock_rate: 100.0 # Hz, should be the same rate or lower than the simulation rate
-realtime_factor: 1.0 # [-]
+
+# the rate of publishing of /clock
+clock_rate:      400.0 # Hz, should be >= simulation_rate, ideally in whole multiples of simulation_rate
+
+dynamic:
+
+  realtime_factor: 1.0 # [-]
+
+  collisions:
+
+    enabled: true
+    crash: true
+
+    # if crash==false, then the collisions are elastic
+    rebounce: 100.0
 
 # when true, the simulation time will get initialized from wall time
 sim_time_from_wall_time: true
@@ -10,6 +24,50 @@ g: 9.81 # [ms^-2]
 iterate_without_input: true
 
 input_timeout: 1.0 # [s]
+
+subscribers:
+
+  # used for feedforward
+  tracker_cmd:
+    enabled: true
+
+  position_cmd:
+    enabled: true
+
+  velocity_hdg_cmd:
+    enabled: true
+
+  velocity_hdg_rate_cmd:
+    enabled: true
+
+  acceleration_hdg_cmd:
+    enabled: true
+
+  acceleration_hdg_rate_cmd:
+    enabled: true
+
+  attitude_cmd:
+    enabled: true
+
+  attitude_rate_cmd:
+    enabled: true
+
+  control_group_cmd:
+    enabled: true
+
+  actuators_group_cmd:
+    enabled: true
+
+publishers:
+
+  odometry:
+    enabled: true
+
+  rangefinder:
+    enabled: true
+
+  imu:
+    enabled: true
 
 frames:
   world:
@@ -21,13 +79,6 @@ frames:
   rangefinder:
     name: "garmin"
     publish_tf: true
-
-collisions:
-  enabled: true
-  crash: true
-
-  # if crash==false, then the collisions are elastic
-  rebounce: 100.0
 
 # randomization of the initial conditions around the desired spawn point
 randomization:

@@ -3,28 +3,27 @@ root: ./
 name: simulation
 socket_name: pairs
 attach: false
-tmux_options:
+tmux_options: -f <%= @settings["config"] %>
 # you can modify these
-startup_window: goto
+startup_window: simulator
 windows:
-  - roscore:
-      layout: tiled
-      panes:
-        - roscore
   - simulator:
       layout: tiled
       panes:
-        - waitForRos; roslaunch pairs_multirotor_simulator multirotor_simulator.launch custom_config:=./custom_configs/simulator.yaml
+        - ros2 launch pairs_multirotor_simulator multirotor_simulator.launch.py custom_config:=./custom_configs/simulator.yaml
   - goto:
       layout: tiled
       panes:
         - 'history -s ./goto.py'
-        - 'history -s ./velocity_cmd.py'
   - rviz:
       layout: tiled
       panes:
-        - waitForTime; rosrun rviz rviz -d ./rviz.rviz
+        - ros2 run rviz2 rviz2 -d ./rviz.rviz
+  - reconfigure:
+      layout: tiled
+      panes:
+        - ros2 run rqt_reconfigure rqt_reconfigure
   - layout:
       layout: tiled
       panes:
-        - waitForTime; sleep 5.0; ~/.i3/layout_manager.sh ./layout.json
+        - sleep 5.0; ~/.i3/layout_manager.sh ./layout.json

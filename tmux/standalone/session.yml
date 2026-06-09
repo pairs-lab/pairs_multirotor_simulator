@@ -3,18 +3,19 @@ root: ./
 name: simulation
 socket_name: pairs
 attach: false
-tmux_options:
+tmux_options: -f <%= @settings["config"] %>
 # you can modify these
 startup_window: goto
+pre_window: export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 windows:
-  - roscore:
+  - router:
       layout: tiled
       panes:
-        - roscore
+        - ros2 run rmw_zenoh_cpp rmw_zenohd
   - simulator:
       layout: tiled
       panes:
-        - waitForRos; roslaunch pairs_multirotor_simulator multirotor_simulator.launch custom_config:=./custom_configs/simulator.yaml
+        - ros2 launch pairs_multirotor_simulator multirotor_simulator.launch.py custom_config:=./custom_configs/simulator.yaml
   - goto:
       layout: tiled
       panes:
@@ -22,7 +23,11 @@ windows:
   - rviz:
       layout: tiled
       panes:
-        - waitForTime; rosrun rviz rviz -d ./rviz.rviz
+        - ros2 run rviz2 rviz2 -d ./rviz.rviz
+  - reconfigure:
+      layout: tiled
+      panes:
+        - ros2 run rqt_reconfigure rqt_reconfigure
   - layout:
       layout: tiled
       panes:

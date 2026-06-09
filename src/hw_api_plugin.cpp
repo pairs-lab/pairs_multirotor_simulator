@@ -1,22 +1,30 @@
 /* includes //{ */
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <pairs_uav_hw_api/api.h>
 
-#include <nav_msgs/Odometry.h>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <pairs_lib/param_loader.h>
 #include <pairs_lib/attitude_converter.h>
 #include <pairs_lib/mutex.h>
 #include <pairs_lib/publisher_handler.h>
-#include <pairs_lib/subscribe_handler.h>
-#include <pairs_lib/service_client_handler.h>
-
-#include <std_msgs/Float64.h>
-#include <std_srvs/SetBool.h>
+#include <pairs_lib/subscriber_handler.h>
 
 #include <pairs_lib/gps_conversions.h>
+
+#include <pairs_lib/errorgraph/error_publisher.h>
+
+//}
+
+/* typedefs //{ */
+
+#if USE_ROS_TIMER == 1
+typedef pairs_lib::ROSTimer TimerType;
+#else
+typedef pairs_lib::ThreadTimer TimerType;
+#endif
 
 //}
 
@@ -30,11 +38,23 @@ class Api : public pairs_uav_hw_api::PairsUavHwApi {
 public:
   ~Api(){};
 
-  void initialize(const ros::NodeHandle& parent_nh, std::shared_ptr<pairs_uav_hw_api::CommonHandlers_t> common_handlers);
+  void initialize(const rclcpp::Node::SharedPtr &node, std::shared_ptr<pairs_uav_hw_api::CommonHandlers_t> common_handlers);
+
+  void destroy();
+
+  rclcpp::Node::SharedPtr  node_;
+  rclcpp::Clock::SharedPtr clock_;
+
+  rclcpp::CallbackGroup::SharedPtr cbgrp_subs_;
+  rclcpp::CallbackGroup::SharedPtr cbgrp_sc_;
+  rclcpp::CallbackGroup::SharedPtr cbgrp_timers_;
+
+  // | ------------------------- errorgraph ------------------------- |
+  std::unique_ptr<pairs_lib::errorgraph::ErrorPublisher> error_publisher_;
 
   // | ------------------------- params ------------------------- |
 
-  pairs_msgs::HwApiCapabilities _capabilities_;
+  pairs_msgs::msg::HwApiCapabilities _capabilities_;
 
   bool _feedforward_enabled_;
 
@@ -51,69 +71,69 @@ public:
 
   // | --------------------- status methods --------------------- |
 
-  pairs_msgs::HwApiStatus       getStatus();
-  pairs_msgs::HwApiCapabilities getCapabilities();
+  pairs_msgs::msg::HwApiStatus       getStatus();
+  pairs_msgs::msg::HwApiCapabilities getCapabilities();
 
   // | --------------------- topic callbacks -------------------- |
 
-  bool callbackActuatorCmd(const pairs_msgs::HwApiActuatorCmd::ConstPtr msg);
-  bool callbackControlGroupCmd(const pairs_msgs::HwApiControlGroupCmd::ConstPtr msg);
-  bool callbackAttitudeRateCmd(const pairs_msgs::HwApiAttitudeRateCmd::ConstPtr msg);
-  bool callbackAttitudeCmd(const pairs_msgs::HwApiAttitudeCmd::ConstPtr msg);
-  bool callbackAccelerationHdgRateCmd(const pairs_msgs::HwApiAccelerationHdgRateCmd::ConstPtr msg);
-  bool callbackAccelerationHdgCmd(const pairs_msgs::HwApiAccelerationHdgCmd::ConstPtr msg);
-  bool callbackVelocityHdgRateCmd(const pairs_msgs::HwApiVelocityHdgRateCmd::ConstPtr msg);
-  bool callbackVelocityHdgCmd(const pairs_msgs::HwApiVelocityHdgCmd::ConstPtr msg);
-  bool callbackPositionCmd(const pairs_msgs::HwApiPositionCmd::ConstPtr msg);
+  bool callbackActuatorCmd(const pairs_msgs::msg::HwApiActuatorCmd::ConstSharedPtr msg);
+  bool callbackControlGroupCmd(const pairs_msgs::msg::HwApiControlGroupCmd::ConstSharedPtr msg);
+  bool callbackAttitudeRateCmd(const pairs_msgs::msg::HwApiAttitudeRateCmd::ConstSharedPtr msg);
+  bool callbackAttitudeCmd(const pairs_msgs::msg::HwApiAttitudeCmd::ConstSharedPtr msg);
+  bool callbackAccelerationHdgRateCmd(const pairs_msgs::msg::HwApiAccelerationHdgRateCmd::ConstSharedPtr msg);
+  bool callbackAccelerationHdgCmd(const pairs_msgs::msg::HwApiAccelerationHdgCmd::ConstSharedPtr msg);
+  bool callbackVelocityHdgRateCmd(const pairs_msgs::msg::HwApiVelocityHdgRateCmd::ConstSharedPtr msg);
+  bool callbackVelocityHdgCmd(const pairs_msgs::msg::HwApiVelocityHdgCmd::ConstSharedPtr msg);
+  bool callbackPositionCmd(const pairs_msgs::msg::HwApiPositionCmd::ConstSharedPtr msg);
 
-  void callbackTrackerCmd(const pairs_msgs::TrackerCommand::ConstPtr msg);
+  void callbackTrackerCmd(const pairs_msgs::msg::TrackerCommand::ConstSharedPtr msg);
 
   // | -------------------- service callbacks ------------------- |
 
-  std::tuple<bool, std::string> callbackArming(const bool& request);
-  std::tuple<bool, std::string> callbackOffboard(void);
+  pairs_lib::Task<std::tuple<bool, std::string>> callbackArming(const bool &request);
+  pairs_lib::Task<std::tuple<bool, std::string>> callbackOffboard(void);
 
 private:
   bool is_initialized_ = false;
 
   std::shared_ptr<pairs_uav_hw_api::CommonHandlers_t> common_handlers_;
 
-  ros::Time  last_cmd_time_;
-  std::mutex mutex_last_cmd_time_;
+  rclcpp::Time last_cmd_time_;
+  std::mutex   mutex_last_cmd_time_;
 
   // | ----------------------- subscribers ---------------------- |
 
-  pairs_lib::SubscribeHandler<nav_msgs::Odometry> sh_odom_;
-  pairs_lib::SubscribeHandler<sensor_msgs::Imu>   sh_imu_;
-  pairs_lib::SubscribeHandler<sensor_msgs::Range> sh_range_;
+  pairs_lib::SubscriberHandler<nav_msgs::msg::Odometry> sh_odom_;
+  pairs_lib::SubscriberHandler<sensor_msgs::msg::Imu>   sh_imu_;
+  pairs_lib::SubscriberHandler<sensor_msgs::msg::Range> sh_range_;
 
-  void callbackOdom(const nav_msgs::Odometry::ConstPtr msg);
-  void callbackImu(const sensor_msgs::Imu::ConstPtr msg);
-  void callbackRangefinder(const sensor_msgs::Range::ConstPtr msg);
+  void callbackOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
+  void callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
+  void callbackRangefinder(const sensor_msgs::msg::Range::ConstSharedPtr msg);
 
   // | ----------------------- publishers ----------------------- |
 
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiActuatorCmd>            ph_actuators_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiControlGroupCmd>        ph_control_group_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiAttitudeRateCmd>        ph_attitude_rate_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiAttitudeCmd>            ph_attitude_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiAccelerationHdgRateCmd> ph_acceleration_hdg_rate_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiAccelerationHdgCmd>     ph_acceleration_hdg_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiVelocityHdgRateCmd>     ph_velocity_hdg_rate_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiVelocityHdgCmd>         ph_velocity_hdg_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::HwApiPositionCmd>            ph_position_cmd_;
-  pairs_lib::PublisherHandler<pairs_msgs::TrackerCommand>              ph_tracker_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiActuatorCmd>            ph_actuators_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiControlGroupCmd>        ph_control_group_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAttitudeRateCmd>        ph_attitude_rate_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAttitudeCmd>            ph_attitude_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAccelerationHdgRateCmd> ph_acceleration_hdg_rate_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAccelerationHdgCmd>     ph_acceleration_hdg_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiVelocityHdgRateCmd>     ph_velocity_hdg_rate_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiVelocityHdgCmd>         ph_velocity_hdg_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiPositionCmd>            ph_position_cmd_;
+  pairs_lib::PublisherHandler<pairs_msgs::msg::TrackerCommand>              ph_tracker_cmd_;
 
   // | ------------------------- timers ------------------------- |
 
-  ros::Timer timer_main_;
+  std::shared_ptr<TimerType> timer_main_;
 
-  void timerMain(const ros::TimerEvent& event);
+  void timerMain();
 
   // | ------------------------ variables ----------------------- |
 
-  std::atomic<bool> offboard_ = false;
-  std::string       mode_;
+  std::atomic<bool> offboard_  = false;
+  std::string       mode_      = "NORMAL";
   std::atomic<bool> armed_     = false;
   std::atomic<bool> connected_ = false;
   std::mutex        mutex_status_;
@@ -135,10 +155,16 @@ private:
 
 /* initialize() //{ */
 
-void Api::initialize(const ros::NodeHandle& parent_nh, std::shared_ptr<pairs_uav_hw_api::CommonHandlers_t> common_handlers) {
+void Api::initialize(const rclcpp::Node::SharedPtr &node, std::shared_ptr<pairs_uav_hw_api::CommonHandlers_t> common_handlers) {
 
-  ros::NodeHandle nh_(parent_nh);
+  node_  = node;
+  clock_ = node_->get_clock();
 
+  cbgrp_subs_   = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbgrp_sc_     = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cbgrp_timers_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  error_publisher_ = std::make_unique<pairs_lib::errorgraph::ErrorPublisher>(node_, clock_, "HwApiManager", "PairsUavSimulatorHwApi");
   common_handlers_ = common_handlers;
 
   _capabilities_.api_name = "PairsSimulator";
@@ -147,131 +173,174 @@ void Api::initialize(const ros::NodeHandle& parent_nh, std::shared_ptr<pairs_uav
   _body_frame_name_  = common_handlers->getBodyFrameName();
   _world_frame_name_ = common_handlers->getWorldFrameName();
 
-  last_cmd_time_ = ros::Time::UNINITIALIZED;
+  last_cmd_time_ = rclcpp::Time(0, 0, clock_->get_clock_type());
 
   // | ------------------- loading parameters ------------------- |
 
-  pairs_lib::ParamLoader param_loader(nh_, "PairsUavHwApi");
+  pairs_lib::ParamLoader local_param_loader(node_, "MultirotorSimulatorHwApi");
 
-  param_loader.loadParam("input_timeout", _input_timeout_);
+  std::string custom_config_path;
 
-  param_loader.loadParam("gnss/utm_x", _utm_x_);
-  param_loader.loadParam("gnss/utm_y", _utm_y_);
-  param_loader.loadParam("gnss/utm_zone", _utm_zone_);
-  param_loader.loadParam("gnss/amsl", _amsl_);
+  common_handlers_->main_param_loader->loadParam("custom_config", custom_config_path);
 
-  param_loader.loadParam("input_mode/actuators", (bool&)_capabilities_.accepts_actuator_cmd);
-  param_loader.loadParam("input_mode/control_group", (bool&)_capabilities_.accepts_control_group_cmd);
-  param_loader.loadParam("input_mode/attitude_rate", (bool&)_capabilities_.accepts_attitude_rate_cmd);
-  param_loader.loadParam("input_mode/attitude", (bool&)_capabilities_.accepts_attitude_cmd);
-  param_loader.loadParam("input_mode/acceleration_hdg_rate", (bool&)_capabilities_.accepts_acceleration_hdg_rate_cmd);
-  param_loader.loadParam("input_mode/acceleration_hdg", (bool&)_capabilities_.accepts_acceleration_hdg_cmd);
-  param_loader.loadParam("input_mode/velocity_hdg_rate", (bool&)_capabilities_.accepts_velocity_hdg_rate_cmd);
-  param_loader.loadParam("input_mode/velocity_hdg", (bool&)_capabilities_.accepts_velocity_hdg_cmd);
-  param_loader.loadParam("input_mode/position", (bool&)_capabilities_.accepts_position_cmd);
-  param_loader.loadParam("input_mode/feedforward", _feedforward_enabled_);
+  if (custom_config_path != "") {
+    local_param_loader.addYamlFile(custom_config_path);
+  }
 
-  param_loader.loadParam("outputs/distance_sensor", (bool&)_capabilities_.produces_distance_sensor);
-  param_loader.loadParam("outputs/gnss", (bool&)_capabilities_.produces_gnss);
-  param_loader.loadParam("outputs/rtk", (bool&)_capabilities_.produces_rtk);
-  param_loader.loadParam("outputs/imu", (bool&)_capabilities_.produces_imu);
-  param_loader.loadParam("outputs/altitude", (bool&)_capabilities_.produces_altitude);
-  param_loader.loadParam("outputs/magnetometer_heading", (bool&)_capabilities_.produces_magnetometer_heading);
-  param_loader.loadParam("outputs/rc_channels", (bool&)_capabilities_.produces_rc_channels);
-  param_loader.loadParam("outputs/battery_state", (bool&)_capabilities_.produces_battery_state);
-  param_loader.loadParam("outputs/position", (bool&)_capabilities_.produces_position);
-  param_loader.loadParam("outputs/orientation", (bool&)_capabilities_.produces_orientation);
-  param_loader.loadParam("outputs/velocity", (bool&)_capabilities_.produces_velocity);
-  param_loader.loadParam("outputs/angular_velocity", (bool&)_capabilities_.produces_angular_velocity);
-  param_loader.loadParam("outputs/odometry", (bool&)_capabilities_.produces_odometry);
-  param_loader.loadParam("outputs/ground_truth", (bool&)_capabilities_.produces_ground_truth);
+  std::vector<std::string> config_files;
+  common_handlers_->main_param_loader->loadParamReusable("configs", config_files);
+
+  if (!common_handlers_->main_param_loader->loadedSuccessfully()) {
+    RCLCPP_ERROR(node_->get_logger(), "Could not load all parameters!");
+    error_publisher_->addOneshotError("Could not load all parameters");
+    error_publisher_->flushAndShutdown();
+  }
+
+  for (auto config_file : config_files) {
+    RCLCPP_INFO(node_->get_logger(), "loading config file '%s'", config_file.c_str());
+    local_param_loader.addYamlFile(config_file);
+  }
+
+  local_param_loader.loadParam("input_timeout", _input_timeout_);
+
+  local_param_loader.loadParam("gnss/utm_x", _utm_x_);
+  local_param_loader.loadParam("gnss/utm_y", _utm_y_);
+  local_param_loader.loadParam("gnss/utm_zone", _utm_zone_);
+  local_param_loader.loadParam("gnss/amsl", _amsl_);
+
+  local_param_loader.loadParam("input_mode/actuators", (bool &)_capabilities_.accepts_actuator_cmd);
+  local_param_loader.loadParam("input_mode/control_group", (bool &)_capabilities_.accepts_control_group_cmd);
+  local_param_loader.loadParam("input_mode/attitude_rate", (bool &)_capabilities_.accepts_attitude_rate_cmd);
+  local_param_loader.loadParam("input_mode/attitude", (bool &)_capabilities_.accepts_attitude_cmd);
+  local_param_loader.loadParam("input_mode/acceleration_hdg_rate", (bool &)_capabilities_.accepts_acceleration_hdg_rate_cmd);
+  local_param_loader.loadParam("input_mode/acceleration_hdg", (bool &)_capabilities_.accepts_acceleration_hdg_cmd);
+  local_param_loader.loadParam("input_mode/velocity_hdg_rate", (bool &)_capabilities_.accepts_velocity_hdg_rate_cmd);
+  local_param_loader.loadParam("input_mode/velocity_hdg", (bool &)_capabilities_.accepts_velocity_hdg_cmd);
+  local_param_loader.loadParam("input_mode/position", (bool &)_capabilities_.accepts_position_cmd);
+  local_param_loader.loadParam("input_mode/feedforward", _feedforward_enabled_);
+
+  local_param_loader.loadParam("outputs/distance_sensor", (bool &)_capabilities_.produces_distance_sensor);
+  local_param_loader.loadParam("outputs/gnss", (bool &)_capabilities_.produces_gnss);
+  local_param_loader.loadParam("outputs/rtk", (bool &)_capabilities_.produces_rtk);
+  local_param_loader.loadParam("outputs/imu", (bool &)_capabilities_.produces_imu);
+  local_param_loader.loadParam("outputs/altitude", (bool &)_capabilities_.produces_altitude);
+  local_param_loader.loadParam("outputs/magnetometer_heading", (bool &)_capabilities_.produces_magnetometer_heading);
+  local_param_loader.loadParam("outputs/rc_channels", (bool &)_capabilities_.produces_rc_channels);
+  local_param_loader.loadParam("outputs/rc_rssi", (bool &)_capabilities_.produces_rc_rssi);
+  local_param_loader.loadParam("outputs/battery_state", (bool &)_capabilities_.produces_battery_state);
+  local_param_loader.loadParam("outputs/position", (bool &)_capabilities_.produces_position);
+  local_param_loader.loadParam("outputs/orientation", (bool &)_capabilities_.produces_orientation);
+  local_param_loader.loadParam("outputs/velocity", (bool &)_capabilities_.produces_velocity);
+  local_param_loader.loadParam("outputs/angular_velocity", (bool &)_capabilities_.produces_angular_velocity);
+  local_param_loader.loadParam("outputs/odometry", (bool &)_capabilities_.produces_odometry);
+  local_param_loader.loadParam("outputs/ground_truth", (bool &)_capabilities_.produces_ground_truth);
 
   _capabilities_.produces_magnetic_field = false;
 
-  if (!param_loader.loadedSuccessfully()) {
-    ROS_ERROR("[PairsUavHwDummyApi]: Could not load all parameters!");
-    ros::shutdown();
+  if (!local_param_loader.loadedSuccessfully()) {
+    RCLCPP_ERROR(node_->get_logger(), "Could not load all parameters!");
+    error_publisher_->addOneshotError("Could not load all parameters");
+    error_publisher_->flushAndShutdown();
   }
 
   // | ----------------------- subscribers ---------------------- |
 
-  pairs_lib::SubscribeHandlerOptions shopts;
-  shopts.nh                 = nh_;
-  shopts.node_name          = "MultirotorSimulatorHwApi";
-  shopts.no_message_timeout = pairs_lib::no_timeout;
-  shopts.threadsafe         = true;
-  shopts.autostart          = true;
-  shopts.queue_size         = 10;
-  shopts.transport_hints    = ros::TransportHints().tcpNoDelay();
+  pairs_lib::SubscriberHandlerOptions shopts;
 
-  sh_odom_ = pairs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "simulator_odom_in", &Api::callbackOdom, this);
+  shopts.node                                = node_;
+  shopts.node_name                           = "MultirotorSimulatorHwApi";
+  shopts.no_message_timeout                  = pairs_lib::no_timeout;
+  shopts.threadsafe                          = true;
+  shopts.autostart                           = true;
+  shopts.subscription_options.callback_group = cbgrp_subs_;
 
-  sh_imu_ = pairs_lib::SubscribeHandler<sensor_msgs::Imu>(shopts, "simulator_imu_in", &Api::callbackImu, this);
+  sh_odom_ = pairs_lib::SubscriberHandler<nav_msgs::msg::Odometry>(shopts, "~/simulator_odom_in", &Api::callbackOdom, this);
 
-  sh_range_ = pairs_lib::SubscribeHandler<sensor_msgs::Range>(shopts, "simulator_rangefinder_in", &Api::callbackRangefinder, this);
+  sh_imu_ = pairs_lib::SubscriberHandler<sensor_msgs::msg::Imu>(shopts, "~/simulator_imu_in", &Api::callbackImu, this);
+
+  sh_range_ = pairs_lib::SubscriberHandler<sensor_msgs::msg::Range>(shopts, "~/simulator_rangefinder_in", &Api::callbackRangefinder, this);
 
   // | ----------------------- publishers ----------------------- |
 
   if (_capabilities_.accepts_actuator_cmd) {
-    ph_actuators_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiActuatorCmd>(nh_, "simulator_actuators_cmd_out", 1);
+    ph_actuators_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiActuatorCmd>(node_, "~/simulator_actuators_cmd_out");
   }
 
   if (_capabilities_.accepts_control_group_cmd) {
-    ph_control_group_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiControlGroupCmd>(nh_, "simulator_control_group_cmd_out", 1);
+    ph_control_group_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiControlGroupCmd>(node_, "~/simulator_control_group_cmd_out");
   }
 
   if (_capabilities_.accepts_attitude_rate_cmd) {
-    ph_attitude_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiAttitudeRateCmd>(nh_, "simulator_attitude_rate_cmd_out", 1);
+    ph_attitude_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAttitudeRateCmd>(node_, "~/simulator_attitude_rate_cmd_out");
   }
 
   if (_capabilities_.accepts_attitude_cmd) {
-    ph_attitude_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiAttitudeCmd>(nh_, "simulator_attitude_cmd_out", 1);
+    ph_attitude_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAttitudeCmd>(node_, "~/simulator_attitude_cmd_out");
   }
 
   if (_capabilities_.accepts_acceleration_hdg_rate_cmd) {
-    ph_acceleration_hdg_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiAccelerationHdgRateCmd>(nh_, "simulator_acceleration_hdg_rate_cmd_out", 1);
+    ph_acceleration_hdg_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAccelerationHdgRateCmd>(node_, "~/simulator_acceleration_hdg_rate_cmd_out");
   }
 
   if (_capabilities_.accepts_acceleration_hdg_cmd) {
-    ph_acceleration_hdg_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiAccelerationHdgCmd>(nh_, "simulator_acceleration_hdg_cmd_out", 1);
+    ph_acceleration_hdg_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiAccelerationHdgCmd>(node_, "~/simulator_acceleration_hdg_cmd_out");
   }
 
   if (_capabilities_.accepts_velocity_hdg_rate_cmd) {
-    ph_velocity_hdg_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiVelocityHdgRateCmd>(nh_, "simulator_velocity_hdg_rate_cmd_out", 1);
+    ph_velocity_hdg_rate_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiVelocityHdgRateCmd>(node_, "~/simulator_velocity_hdg_rate_cmd_out");
   }
 
   if (_capabilities_.accepts_velocity_hdg_cmd) {
-    ph_velocity_hdg_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiVelocityHdgCmd>(nh_, "simulator_velocity_hdg_cmd_out", 1);
+    ph_velocity_hdg_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiVelocityHdgCmd>(node_, "~/simulator_velocity_hdg_cmd_out");
   }
 
   if (_capabilities_.accepts_position_cmd) {
-    ph_position_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::HwApiPositionCmd>(nh_, "simulator_position_cmd_out", 1);
+    ph_position_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::HwApiPositionCmd>(node_, "~/simulator_position_cmd_out");
   }
 
   if (_feedforward_enabled_) {
-    ph_tracker_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::TrackerCommand>(nh_, "simulator_tracker_cmd_out", 1);
+    ph_tracker_cmd_ = pairs_lib::PublisherHandler<pairs_msgs::msg::TrackerCommand>(node_, "~/simulator_tracker_cmd_out");
   }
 
   // | ------------------------- timers ------------------------- |
 
-  timer_main_ = nh_.createTimer(ros::Rate(10.0), &Api::timerMain, this);
+  {
+    std::function<void()> callback_fcn = std::bind(&Api::timerMain, this);
+
+    pairs_lib::TimerHandlerOptions opts;
+
+    opts.node           = node_;
+    opts.autostart      = true;
+    opts.callback_group = cbgrp_timers_;
+
+    timer_main_ = std::make_shared<TimerType>(opts, rclcpp::Rate(10.0, clock_), callback_fcn);
+  }
 
   // | ----------------------- finish init ---------------------- |
 
-  ROS_INFO("[PairsUavHwDummyApi]: initialized");
+  RCLCPP_INFO(node_->get_logger(), "initialized");
 
   is_initialized_ = true;
 }
 
 //}
 
+/* destroy() //{ */
+
+void Api::destroy() {
+
+  timer_main_->stop();
+}
+
+//}
+
 /* getStatus() //{ */
 
-pairs_msgs::HwApiStatus Api::getStatus() {
+pairs_msgs::msg::HwApiStatus Api::getStatus() {
 
-  pairs_msgs::HwApiStatus status;
+  pairs_msgs::msg::HwApiStatus status;
 
-  status.stamp = ros::Time::now();
+  status.stamp = clock_->now();
 
   bool has_odom = sh_odom_.hasMsg();
 
@@ -291,9 +360,9 @@ pairs_msgs::HwApiStatus Api::getStatus() {
 
 /* getCapabilities() //{ */
 
-pairs_msgs::HwApiCapabilities Api::getCapabilities() {
+pairs_msgs::msg::HwApiCapabilities Api::getCapabilities() {
 
-  _capabilities_.stamp = ros::Time::now();
+  _capabilities_.stamp = clock_->now();
 
   return _capabilities_;
 }
@@ -302,7 +371,7 @@ pairs_msgs::HwApiCapabilities Api::getCapabilities() {
 
 /* callbackArming() //{ */
 
-std::tuple<bool, std::string> Api::callbackArming([[maybe_unused]] const bool& request) {
+pairs_lib::Task<std::tuple<bool, std::string>> Api::callbackArming([[maybe_unused]] const bool &request) {
 
   std::stringstream ss;
 
@@ -311,16 +380,16 @@ std::tuple<bool, std::string> Api::callbackArming([[maybe_unused]] const bool& r
     armed_ = true;
 
     ss << "armed";
-    ROS_INFO_STREAM_THROTTLE(1.0, "[MultirotorSimulatorHwApi]: " << ss.str());
-    return std::tuple(true, ss.str());
+    RCLCPP_INFO_STREAM(node_->get_logger(), "" << ss.str());
+    co_return std::tuple(true, ss.str());
 
   } else {
 
     armed_ = false;
 
     ss << "disarmed";
-    ROS_INFO_STREAM_THROTTLE(1.0, "[MultirotorSimulatorHwApi]: " << ss.str());
-    return std::tuple(true, ss.str());
+    RCLCPP_INFO_STREAM(node_->get_logger(), "" << ss.str());
+    co_return std::tuple(true, ss.str());
   }
 }
 
@@ -328,29 +397,30 @@ std::tuple<bool, std::string> Api::callbackArming([[maybe_unused]] const bool& r
 
 /* callbackOffboard() //{ */
 
-std::tuple<bool, std::string> Api::callbackOffboard(void) {
+pairs_lib::Task<std::tuple<bool, std::string>> Api::callbackOffboard(void) {
 
   std::stringstream ss;
 
   if (!armed_) {
     ss << "Cannot switch to offboard, not armed.";
-    ROS_INFO_THROTTLE(1.0, "[MultirotorSimulatorHwApi]: %s", ss.str().c_str());
-    return {false, ss.str()};
+    RCLCPP_INFO(node_->get_logger(), "%s", ss.str().c_str());
+    co_return {false, ss.str()};
   }
 
   auto last_cmd_time = pairs_lib::get_mutexed(mutex_last_cmd_time_, last_cmd_time_);
 
-  if (last_cmd_time != ros::Time::UNINITIALIZED && (ros::Time::now() - last_cmd_time).toSec() > _input_timeout_) {
+  if ((clock_->now() - last_cmd_time).seconds() > _input_timeout_) {
     ss << "Cannot switch to offboard, missing control input.";
-    ROS_INFO_THROTTLE(1.0, "[MultirotorSimulatorHwApi]: %s", ss.str().c_str());
-    return {false, ss.str()};
+    RCLCPP_INFO(node_->get_logger(), "%s", ss.str().c_str());
+    co_return {false, ss.str()};
   }
 
   offboard_ = true;
+  mode_     = "OFFBOARD";
 
   ss << "Offboard set";
-  ROS_INFO_THROTTLE(1.0, "[MultirotorSimulatorHwApi]: %s", ss.str().c_str());
-  return {true, ss.str()};
+  RCLCPP_INFO(node_->get_logger(), "%s", ss.str().c_str());
+  co_return {true, ss.str()};
 }
 
 //}
@@ -359,22 +429,22 @@ std::tuple<bool, std::string> Api::callbackOffboard(void) {
 
 /* callbackActuatorCmd() //{ */
 
-bool Api::callbackActuatorCmd(const pairs_msgs::HwApiActuatorCmd::ConstPtr msg) {
+bool Api::callbackActuatorCmd(const pairs_msgs::msg::HwApiActuatorCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_actuator_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting actuators cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting actuators cmd");
 
   if (offboard_) {
-    ph_actuators_cmd_.publish(msg);
+    ph_actuators_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -384,22 +454,22 @@ bool Api::callbackActuatorCmd(const pairs_msgs::HwApiActuatorCmd::ConstPtr msg) 
 
 /* callbackControlGroupCmd() //{ */
 
-bool Api::callbackControlGroupCmd(const pairs_msgs::HwApiControlGroupCmd::ConstPtr msg) {
+bool Api::callbackControlGroupCmd(const pairs_msgs::msg::HwApiControlGroupCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_control_group_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting control group cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting control group cmd");
 
   if (offboard_) {
-    ph_control_group_cmd_.publish(msg);
+    ph_control_group_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -409,22 +479,22 @@ bool Api::callbackControlGroupCmd(const pairs_msgs::HwApiControlGroupCmd::ConstP
 
 /* callbackAttitudeRateCmd() //{ */
 
-bool Api::callbackAttitudeRateCmd(const pairs_msgs::HwApiAttitudeRateCmd::ConstPtr msg) {
+bool Api::callbackAttitudeRateCmd(const pairs_msgs::msg::HwApiAttitudeRateCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_attitude_rate_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting attitude rate cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting attitude rate cmd");
 
   if (offboard_) {
-    ph_attitude_rate_cmd_.publish(msg);
+    ph_attitude_rate_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -434,22 +504,22 @@ bool Api::callbackAttitudeRateCmd(const pairs_msgs::HwApiAttitudeRateCmd::ConstP
 
 /* callbackAttitudeCmd() //{ */
 
-bool Api::callbackAttitudeCmd(const pairs_msgs::HwApiAttitudeCmd::ConstPtr msg) {
+bool Api::callbackAttitudeCmd(const pairs_msgs::msg::HwApiAttitudeCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_attitude_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting attitude cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting attitude cmd");
 
   if (offboard_) {
-    ph_attitude_cmd_.publish(msg);
+    ph_attitude_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -459,22 +529,22 @@ bool Api::callbackAttitudeCmd(const pairs_msgs::HwApiAttitudeCmd::ConstPtr msg) 
 
 /* callbackAccelerationHdgRateCmd() //{ */
 
-bool Api::callbackAccelerationHdgRateCmd(const pairs_msgs::HwApiAccelerationHdgRateCmd::ConstPtr msg) {
+bool Api::callbackAccelerationHdgRateCmd(const pairs_msgs::msg::HwApiAccelerationHdgRateCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_acceleration_hdg_rate_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting acceleration+hdg rate cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting acceleration+hdg rate cmd");
 
   if (offboard_) {
-    ph_acceleration_hdg_rate_cmd_.publish(msg);
+    ph_acceleration_hdg_rate_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -484,22 +554,22 @@ bool Api::callbackAccelerationHdgRateCmd(const pairs_msgs::HwApiAccelerationHdgR
 
 /* callbackAccelerationHdgCmd() //{ */
 
-bool Api::callbackAccelerationHdgCmd(const pairs_msgs::HwApiAccelerationHdgCmd::ConstPtr msg) {
+bool Api::callbackAccelerationHdgCmd(const pairs_msgs::msg::HwApiAccelerationHdgCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_acceleration_hdg_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting acceleration+hdg cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting acceleration+hdg cmd");
 
   if (offboard_) {
-    ph_acceleration_hdg_cmd_.publish(msg);
+    ph_acceleration_hdg_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -509,22 +579,22 @@ bool Api::callbackAccelerationHdgCmd(const pairs_msgs::HwApiAccelerationHdgCmd::
 
 /* callbackVelocityHdgRateCmd() //{ */
 
-bool Api::callbackVelocityHdgRateCmd(const pairs_msgs::HwApiVelocityHdgRateCmd::ConstPtr msg) {
+bool Api::callbackVelocityHdgRateCmd(const pairs_msgs::msg::HwApiVelocityHdgRateCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_velocity_hdg_rate_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting velocity+hdg rate cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting velocity+hdg rate cmd");
 
   if (offboard_) {
-    ph_velocity_hdg_rate_cmd_.publish(msg);
+    ph_velocity_hdg_rate_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -534,22 +604,22 @@ bool Api::callbackVelocityHdgRateCmd(const pairs_msgs::HwApiVelocityHdgRateCmd::
 
 /* callbackVelocityHdgCmd() //{ */
 
-bool Api::callbackVelocityHdgCmd(const pairs_msgs::HwApiVelocityHdgCmd::ConstPtr msg) {
+bool Api::callbackVelocityHdgCmd(const pairs_msgs::msg::HwApiVelocityHdgCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_velocity_hdg_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting velocity+hdg cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting velocity+hdg cmd");
 
   if (offboard_) {
-    ph_velocity_hdg_cmd_.publish(msg);
+    ph_velocity_hdg_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -559,22 +629,22 @@ bool Api::callbackVelocityHdgCmd(const pairs_msgs::HwApiVelocityHdgCmd::ConstPtr
 
 /* callbackPositionCmd() //{ */
 
-bool Api::callbackPositionCmd(const pairs_msgs::HwApiPositionCmd::ConstPtr msg) {
+bool Api::callbackPositionCmd(const pairs_msgs::msg::HwApiPositionCmd::ConstSharedPtr msg) {
 
   if (!_capabilities_.accepts_position_cmd) {
     return false;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting position cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting position cmd");
 
   if (offboard_) {
-    ph_position_cmd_.publish(msg);
+    ph_position_cmd_.publish(*msg);
   }
 
   {
     std::scoped_lock lock(mutex_last_cmd_time_);
 
-    last_cmd_time_ = ros::Time::now();
+    last_cmd_time_ = clock_->now();
   }
 
   return true;
@@ -584,12 +654,12 @@ bool Api::callbackPositionCmd(const pairs_msgs::HwApiPositionCmd::ConstPtr msg) 
 
 /* callbackTrackerCmd() //{ */
 
-void Api::callbackTrackerCmd(const pairs_msgs::TrackerCommand::ConstPtr msg) {
+void Api::callbackTrackerCmd(const pairs_msgs::msg::TrackerCommand::ConstSharedPtr msg) {
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting tracker cmd");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting tracker cmd");
 
   if (offboard_) {
-    ph_tracker_cmd_.publish(msg);
+    ph_tracker_cmd_.publish(*msg);
   }
 }
 
@@ -599,13 +669,13 @@ void Api::callbackTrackerCmd(const pairs_msgs::TrackerCommand::ConstPtr msg) {
 
 /* //{ callbackOdom() */
 
-void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
+void Api::callbackOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg) {
 
   if (!is_initialized_) {
     return;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting simulator odometry");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting simulator odometry");
 
   auto odom = msg;
 
@@ -617,12 +687,12 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   // | ----------------- publish the diagnostics ---------------- |
 
-  pairs_msgs::HwApiStatus status;
+  pairs_msgs::msg::HwApiStatus status;
 
   {
     std::scoped_lock lock(mutex_status_);
 
-    status.stamp     = ros::Time::now();
+    status.stamp     = clock_->now();
     status.armed     = armed_;
     status.offboard  = offboard_;
     status.connected = connected_;
@@ -635,7 +705,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   if (_capabilities_.produces_position) {
 
-    geometry_msgs::PointStamped position;
+    geometry_msgs::msg::PointStamped position;
 
     position.header.stamp    = odom->header.stamp;
     position.header.frame_id = _uav_name_ + "/" + _world_frame_name_;
@@ -648,7 +718,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   if (_capabilities_.produces_orientation) {
 
-    geometry_msgs::QuaternionStamped orientation;
+    geometry_msgs::msg::QuaternionStamped orientation;
 
     orientation.header.stamp    = odom->header.stamp;
     orientation.header.frame_id = _uav_name_ + "/" + _world_frame_name_;
@@ -661,7 +731,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   if (_capabilities_.produces_velocity) {
 
-    geometry_msgs::Vector3Stamped velocity;
+    geometry_msgs::msg::Vector3Stamped velocity;
 
     velocity.header.stamp    = odom->header.stamp;
     velocity.header.frame_id = _uav_name_ + "/" + _body_frame_name_;
@@ -674,7 +744,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   if (_capabilities_.produces_angular_velocity) {
 
-    geometry_msgs::Vector3Stamped angular_velocity;
+    geometry_msgs::msg::Vector3Stamped angular_velocity;
 
     angular_velocity.header.stamp    = odom->header.stamp;
     angular_velocity.header.frame_id = _uav_name_ + "/" + _body_frame_name_;
@@ -704,7 +774,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
     pairs_lib::UTMtoLL(odom->pose.pose.position.y + _utm_y_, odom->pose.pose.position.x + _utm_x_, _utm_zone_, lat, lon);
 
-    sensor_msgs::NavSatFix gnss;
+    sensor_msgs::msg::NavSatFix gnss;
 
     gnss.header.stamp    = odom->header.stamp;
     gnss.header.frame_id = _uav_name_ + "/" + _body_frame_name_;
@@ -725,7 +795,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
     pairs_lib::UTMtoLL(odom->pose.pose.position.y + _utm_y_, odom->pose.pose.position.x + _utm_x_, _utm_zone_, lat, lon);
 
-    pairs_msgs::RtkGps rtk;
+    pairs_msgs::msg::RtkGps rtk;
 
     rtk.header.stamp = odom->header.stamp;
 
@@ -733,7 +803,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
     rtk.gps.longitude = lon;
     rtk.gps.altitude  = odom->pose.pose.position.z + _amsl_;
 
-    rtk.fix_type.fix_type = pairs_msgs::RtkFixType::RTK_FIX;
+    rtk.fix_type.fix_type = pairs_msgs::msg::RtkFixType::RTK_FIX;
 
     common_handlers_->publishers.publishRTK(rtk);
   }
@@ -742,7 +812,7 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
   if (_capabilities_.produces_altitude) {
 
-    pairs_msgs::HwApiAltitude altitude;
+    pairs_msgs::msg::HwApiAltitude altitude;
 
     altitude.stamp = odom->header.stamp;
 
@@ -758,13 +828,14 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
     double heading = 0;
     try {
       heading = pairs_lib::AttitudeConverter(odom->pose.pose.orientation).getHeading();
-    } catch (pairs_lib::AttitudeConverter::GetHeadingException& e) { 
-      ROS_ERROR_THROTTLE(1.0, "[Api]: exception caught: '%s'", e.what());
+    }
+    catch (pairs_lib::AttitudeConverter::GetHeadingException &e) {
+      RCLCPP_WARN(node_->get_logger(), "exception caught: '%s'", e.what());
     }
 
-    pairs_msgs::Float64Stamped hdg;
+    pairs_msgs::msg::Float64Stamped hdg;
 
-    hdg.header.stamp = ros::Time::now();
+    hdg.header.stamp = clock_->now();
     hdg.value        = heading;
 
     common_handlers_->publishers.publishMagnetometerHeading(hdg);
@@ -775,13 +846,13 @@ void Api::callbackOdom(const nav_msgs::Odometry::ConstPtr msg) {
 
 /* callbackImu() //{ */
 
-void Api::callbackImu(const sensor_msgs::Imu::ConstPtr msg) {
+void Api::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr msg) {
 
   if (!is_initialized_) {
     return;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting IMU");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting IMU");
 
   if (_capabilities_.produces_imu) {
 
@@ -793,13 +864,13 @@ void Api::callbackImu(const sensor_msgs::Imu::ConstPtr msg) {
 
 /* callbackRangefinder() //{ */
 
-void Api::callbackRangefinder(const sensor_msgs::Range::ConstPtr msg) {
+void Api::callbackRangefinder(const sensor_msgs::msg::Range::ConstSharedPtr msg) {
 
   if (!is_initialized_) {
     return;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: getting rangefinder");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting rangefinder");
 
   if (_capabilities_.produces_distance_sensor) {
 
@@ -813,13 +884,13 @@ void Api::callbackRangefinder(const sensor_msgs::Range::ConstPtr msg) {
 
 /* timerMain() //{ */
 
-void Api::timerMain([[maybe_unused]] const ros::TimerEvent& event) {
+void Api::timerMain() {
 
   if (!is_initialized_) {
     return;
   }
 
-  ROS_INFO_ONCE("[MultirotorSimulatorHwApi]: main timer spinning");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "main timer spinning");
 
   publishBatteryState();
 
@@ -838,7 +909,7 @@ void Api::publishBatteryState(void) {
 
   if (_capabilities_.produces_battery_state) {
 
-    sensor_msgs::BatteryState msg;
+    sensor_msgs::msg::BatteryState msg;
 
     msg.capacity = 100;
     msg.current  = 10.0;
@@ -857,9 +928,9 @@ void Api::publishRC(void) {
 
   if (_capabilities_.produces_rc_channels) {
 
-    pairs_msgs::HwApiRcChannels rc;
+    pairs_msgs::msg::HwApiRcChannels rc;
 
-    rc.stamp = ros::Time::now();
+    rc.stamp = clock_->now();
 
     rc.channels.push_back(0);
     rc.channels.push_back(0);
@@ -872,6 +943,13 @@ void Api::publishRC(void) {
 
     common_handlers_->publishers.publishRcChannels(rc);
   }
+
+  if (_capabilities_.produces_rc_rssi) {
+    pairs_msgs::msg::HwApiRcRssi rssi_out;
+    rssi_out.stamp = clock_->now();
+    rssi_out.rssi  = 0;
+    common_handlers_->publishers.publishRcRssi(rssi_out);
+  }
 }
 
 //}
@@ -882,14 +960,15 @@ void Api::timeoutInputs(void) {
 
   auto last_cmd_time = pairs_lib::get_mutexed(mutex_last_cmd_time_, last_cmd_time_);
 
-  if (last_cmd_time != ros::Time::UNINITIALIZED && (ros::Time::now() - last_cmd_time).toSec() > _input_timeout_) {
+  if (last_cmd_time_.seconds() > 0 && (clock_->now() - last_cmd_time).seconds() > _input_timeout_) {
     offboard_ = false;
+    mode_     = "NORMAL";
   }
 }
 
 //}
 
-}  // namespace pairs_uav_simulator_hw_api_plugin
+} // namespace pairs_uav_simulator_hw_api_plugin
 
-#include <pluginlib/class_list_macros.h>
+#include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(pairs_uav_simulator_hw_api_plugin::Api, pairs_uav_hw_api::PairsUavHwApi)

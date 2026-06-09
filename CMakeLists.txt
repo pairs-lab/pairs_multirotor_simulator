@@ -1,35 +1,48 @@
 cmake_minimum_required(VERSION 3.5)
 project(pairs_multirotor_simulator)
 
-set(CMAKE_CXX_STANDARD 17)
+# set the correct standards
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_definitions(-Wall)
-add_definitions(-Wextra)
+# set the compile options to show code warnings
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra)
+endif()
 
-set(CATKIN_DEPENDENCIES
-  cmake_modules
-  dynamic_reconfigure
-  geometry_msgs
-  pairs_lib
+# 1 == use rclcpp::Timer implementation
+# 0 == use PAIRS's thread timer implementation
+set(USE_ROS_TIMER 0)
+
+if(${USE_ROS_TIMER})
+  MESSAGE(WARNING "[pairs_uav_managers]: Compiling with ROS Timers. This can cause high CPU load in runtime.")
+endif()
+
+if(ENABLE_COVERAGE)
+  message(WARNING "building for coverage, the performance might be limited")
+
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs")
+
+  add_definitions("-O1")
+  add_definitions("-g")
+endif()
+
+set(DEPENDENCIES
+  rclcpp
+  rclcpp_components
   pairs_msgs
-  pairs_uav_hw_api
+  pairs_lib
+  pluginlib
+  geometry_msgs
   nav_msgs
-  nodelet
-  roscpp
-  rosgraph_msgs
-  sensor_msgs
   std_msgs
-  std_srvs
-  )
-
-find_package(catkin REQUIRED COMPONENTS
-  ${CATKIN_DEPENDENCIES}
-  )
-
-generate_dynamic_reconfigure_options(
-  cfg/multirotor_simulator.cfg
-  )
+  sensor_msgs
+  pairs_uav_hw_api
+  Eigen3
+  backward_ros
+)
 
 set(LIBRARIES
   PairsMultirotorSimulator_Simulator
@@ -37,105 +50,118 @@ set(LIBRARIES
   PairsMultirotorSimulator_HwApiPlugin
   )
 
-catkin_package(
-  LIBRARIES ${LIBRARIES}
-  INCLUDE_DIRS include include/pairs_multirotor_simulator include/pairs_multirotor_simulator/uav_system include/pairs_multirotor_simulator/uav_system/controllers
-  CATKIN_DEPENDS ${CATKIN_DEPENDENCIES}
-  )
+foreach(DEP IN LISTS DEPENDENCIES)
+  find_package(${DEP} REQUIRED)
+endforeach()
 
 include_directories(
   include
   include/pairs_multirotor_simulator
   include/pairs_multirotor_simulator/uav_system
   include/pairs_multirotor_simulator/uav_system/controllers
-  ${catkin_INCLUDE_DIRS}
-  ${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake
-  )
+  ${rclcpp_INCLUDE_DIRS}
+  ${pairs_lib_INCLUDE_DIRS}
+  ${pairs_uav_hw_api_INCLUDE_DIRS}
+)
 
 # ROS Wrapper for the Multirotor UAV System + controllers
 
-add_library(PairsMultirotorSimulator_SimulatorSystemRos
+add_library(PairsMultirotorSimulator_SimulatorSystemRos SHARED
   src/uav_system_ros.cpp
-  )
+)
 
-add_dependencies(PairsMultirotorSimulator_SimulatorSystemRos
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-  )
+ament_target_dependencies(PairsMultirotorSimulator_SimulatorSystemRos
+  ${DEPENDENCIES}
+)
 
-target_link_libraries(PairsMultirotorSimulator_SimulatorSystemRos
-  ${catkin_LIBRARIES}
-  ${Eigen_LIBRARIES}
-  )
+# PAIRS Simulator
 
-# Multirotor simulator
-# - ROS node with the PAIRS Multirotor Simulator
-
-add_library(PairsMultirotorSimulator_Simulator
+add_library(PairsMultirotorSimulator_Simulator SHARED
   src/multirotor_simulator.cpp
-  )
-
-add_dependencies(PairsMultirotorSimulator_Simulator
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-  )
+)
 
 target_link_libraries(PairsMultirotorSimulator_Simulator
   PairsMultirotorSimulator_SimulatorSystemRos
-  ${catkin_LIBRARIES}
-  ${Eigen_LIBRARIES}
   )
 
-# Hw API Plugin
-# - pluginlib library for interfacing the Simulator with the PAIRS UAV System
+ament_target_dependencies(PairsMultirotorSimulator_Simulator
+  ${DEPENDENCIES}
+)
 
-add_library(PairsMultirotorSimulator_HwApiPlugin
+rclcpp_components_register_nodes(PairsMultirotorSimulator_Simulator PLUGIN "pairs_multirotor_simulator::MultirotorSimulator" EXECUTABLE PairsMultirotorSimulator_Simulator)
+
+# HW Api Plugin
+
+add_library(PairsMultirotorSimulator_HwApiPlugin SHARED
   src/hw_api_plugin.cpp
-  )
+)
 
-add_dependencies(PairsMultirotorSimulator_HwApiPlugin
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-  )
+ament_target_dependencies(PairsMultirotorSimulator_HwApiPlugin
+  ${DEPENDENCIES}
+)
 
-target_link_libraries(PairsMultirotorSimulator_HwApiPlugin
-  ${catkin_LIBRARIES}
-  ${Eigen_LIBRARIES}
-  )
+target_compile_definitions(PairsMultirotorSimulator_HwApiPlugin PRIVATE USE_ROS_TIMER=${USE_ROS_TIMER})
 
 ## --------------------------------------------------------------
-## |                           Install                          |
+## |                       Export plugins                       |
 ## --------------------------------------------------------------
 
-install(TARGETS ${LIBRARIES}
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
-  )
+# <package of the base class>, <relative path to the xml>
+pluginlib_export_plugin_description_file(pairs_uav_hw_api plugins.xml)
 
-install(DIRECTORY launch config
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  )
+## --------------------------------------------------------------
+## |                           install                          |
+## --------------------------------------------------------------
 
-install(DIRECTORY tmux/
+ament_export_libraries(
+  ${LIBRARIES}
+)
+
+install(
+  TARGETS ${LIBRARIES}
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(
+  DIRECTORY include
+  DESTINATION .
+)
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY tmux
   USE_SOURCE_PERMISSIONS
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/tmux
-  )
+  DESTINATION share/${PROJECT_NAME}
+)
 
-install(DIRECTORY include/pairs_multirotor_simulator/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-  )
-
-install(DIRECTORY scripts/
+install(
+  DIRECTORY scripts
   USE_SOURCE_PERMISSIONS
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-  )
+  DESTINATION lib/${PROJECT_NAME}
+)
 
-install(DIRECTORY scripts
-  USE_SOURCE_PERMISSIONS
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  )
+ament_export_include_directories(
+  include
+)
 
-install(FILES nodelets.xml plugins.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-  )
+ament_export_targets(
+  export_${PROJECT_NAME} HAS_LIBRARY_TARGET
+)
+
+ament_export_dependencies(
+  ${DEPENDENCIES}
+)
+
+ament_package()

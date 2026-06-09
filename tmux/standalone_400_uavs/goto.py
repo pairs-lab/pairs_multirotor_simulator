@@ -1,68 +1,69 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
-import rospy
-import rosnode
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Point
+from pairs_msgs.msg import HwApiPositionCmd
 import random
-import os
 
-from pairs_msgs.msg import HwApiPositionCmd as HwApiPositionCmd
-
-class Goto:
+class Goto(Node):
 
     def __init__(self):
 
-        rospy.init_node('goto', anonymous=True)
+        super().__init__('goto')
 
-        rospy.loginfo('ros not initialized')
+        self.get_logger().info('ROS2 node initialized')
 
-        publishers = []
-        n_uavs = 400
+        self.pub = []
+        self.n_uavs = 400
 
-        rospy.loginfo('setting up publishers')
+        self.get_logger().info('Setting up publishers')
 
-        for i in range(0, n_uavs):
-            publishers.append(rospy.Publisher('/multirotor_simulator/uav{}/position_cmd'.format(i+1), HwApiPositionCmd, queue_size=1))
+        for i in range(self.n_uavs):
+            topic_name = f'/multirotor_simulator/uav{i+1}/position_cmd'
+            self.pub.append(self.create_publisher(HwApiPositionCmd, topic_name, 10))
 
-        xs = []
-        ys = []
-        zs = []
-        hdgs = []
+        # self.xs = [random.uniform(-40, 40) for _ in range(self.n_uavs)]
+        # self.ys = [random.uniform(-40, 40) for _ in range(self.n_uavs)]
+        # self.zs = [random.uniform(2, 20) for _ in range(self.n_uavs)]
+        # self.hdgs = [random.uniform(-3.14, 3.14) for _ in range(self.n_uavs)]
 
-        for i in range(0, n_uavs):
+        self.xs = [0.0 for _ in range(self.n_uavs)]
+        self.ys = [0.0 for _ in range(self.n_uavs)]
+        self.zs = [10.0 for _ in range(self.n_uavs)]
+        self.hdgs = [0.0 for _ in range(self.n_uavs)]
 
-            # random position
-            xs.append(random.uniform(-40, 40))
-            ys.append(random.uniform(-40, 40))
-            zs.append(random.uniform(2, 20))
-            hdgs.append(random.uniform(-3.14, 3.14))
+        self.timer = self.create_timer(0.05, self.publish_positions)  # 10Hz
 
-            # # particular position
-            # xs.append(0)
-            # ys.append(0)
-            # zs.append(5)
-            # hdgs.append(0)
+        self.get_logger().info('Publishing started')
 
-        rospy.loginfo('publishing')
+    def publish_positions(self):
 
-        msg = HwApiPositionCmd();
+        self.get_logger().info('Publishing')
 
-        rate = rospy.Rate(10)
+        msg = HwApiPositionCmd()
 
-        while not rospy.is_shutdown():
+        for i in range(self.n_uavs):
+            msg.position.x = self.xs[i]
+            msg.position.y = self.ys[i]
+            msg.position.z = self.zs[i]
+            msg.heading = self.hdgs[i]
 
-            for i in range(0, n_uavs):
+            self.pub[i].publish(msg)
 
-                msg.position.x = xs[i]
-                msg.position.y = ys[i]
-                msg.position.z = zs[i]
-                msg.heading = hdgs[i]
+def main(args=None):
 
-                publishers[i].publish(msg)
+    rclpy.init(args=args)
 
-            rate.sleep();
+    node = Goto()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
-    try:
-        goto = Goto()
-    except rospy.ROSInterruptException:
-        pass
+    main()

@@ -11,8 +11,16 @@ motor_params:
 # are accepted by the HW API.
 model_params:
 
+  enabled: true
+
   arm_length: 0.25 # [m]
   body_height: 0.1 # [m]
+
+  # The UAV's inertia is approximated as a cilinder using the parameters above
+  # Alternatively, you can provide inertia matrix directly using the following parameter:
+  inertia_matrix:
+    enabled: false
+    matrix: []
 
   propulsion:
 
@@ -39,13 +47,9 @@ model_params:
       1,      1,     1,      1,      # *= force_constant
     ]
 
-    # The UAV's inertia is approximated as a cilinder using the parameters above
-    # Alternatively, you can provide inertia matrix directly using the following parameter:
-    # inertia_matrix: []
-
     rpm:
-      min: 1170 # [revolutions/minute]
-      max: 7800 # [revolutions/minute]
+      min: 1170.0 # [revolutions/minute]
+      max: 7800.0 # [revolutions/minute]
 
 pairs_uav_managers:
 

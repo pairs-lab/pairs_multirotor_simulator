@@ -1,8 +1,8 @@
-name: ros_package_build
+name: ros2_package_build
 
 on:
   push:
-    branches: [ ros1 ]
+    branches: [ ros2 ]
     paths-ignore:
       - '**/README.md'
   workflow_dispatch:
@@ -13,22 +13,22 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Set up ROS Noetic
+      - name: Set up ROS 2 Jazzy
         uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: noetic
+          required-ros-distributions: jazzy
       - name: Install dependencies
         run: |
-          sudo apt-get install -y python3-catkin-tools python3-rosdep
-          rosdep update --include-eol-distros
+          sudo apt-get install -y python3-colcon-common-extensions python3-rosdep
+          rosdep update
       - name: Build
         run: |
-          source /opt/ros/noetic/setup.bash
-          mkdir -p ~/catkin_ws/src
-          cp -r . ~/catkin_ws/src/pairs_multirotor_simulator
-          cd ~/catkin_ws
+          source /opt/ros/jazzy/setup.bash
+          mkdir -p ~/colcon_ws/src
+          cp -r . ~/colcon_ws/src/pairs_multirotor_simulator
+          cd ~/colcon_ws
           rosdep install --from-paths src --ignore-src -r -y || true
-          catkin build pairs_multirotor_simulator
+          colcon build --packages-select pairs_multirotor_simulator
