@@ -2,8 +2,6 @@
 
 PAIRS multirotor dynamics simulator — lightweight ODE-based multi-UAV physics with a hw_api plugin.
 
-Ported from the BSD-3-Clause [ctu-mrs/pairs_multirotor_simulator](https://github.com/pairs-lab/pairs_multirotor_simulator) and adapted for the PAIRS platform (`pairs_*` → `pairs_*`).
-
 This is the **ros2** branch (ROS 2 Jazzy, ament_cmake). For ROS 1 Noetic (catkin), see the `ros1` branch.
 
 ## License
